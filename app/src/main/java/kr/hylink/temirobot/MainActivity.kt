@@ -43,6 +43,7 @@ class MainActivity : Activity(), ServerLink.Listener, RobotGateway.Events {
 
         robot = RobotGateway({ type, payload, replyTo -> link.send(type, payload, replyTo) }, this)
         robot.voiceMode = savedVoiceMode()
+        robot.speechInput = savedSpeechInput()
         robot.voiceBaseUrl = httpBase() + "/twin/voice"
         link = ServerLink(BuildConfig.SERVER_URL, BuildConfig.TEMI_TOKEN, this)
 
@@ -67,6 +68,7 @@ class MainActivity : Activity(), ServerLink.Listener, RobotGateway.Events {
 
     override fun onConnected() {
         connected = true
+        notice = ""
         if (!demo) showIdle()
         renderStatus()
     }
@@ -183,7 +185,8 @@ class MainActivity : Activity(), ServerLink.Listener, RobotGateway.Events {
         } else emptyList()
         val locations = if (missing.isEmpty()) "" else " · 저장 안 된 위치: ${missing.joinToString()}"
         val voice = if (robot.voiceMode == VoiceMode.TEMI_TTS) "Temi 음성" else "서버 음성"
-        status.text = "$server · $robotState · $voice · 마지막 명령 $lastCommand$locations" +
+        val input = if (robot.speechInput == SpeechInput.PI_MIC) "듣기: Pi 마이크" else "듣기: Temi"
+        status.text = "$server · $robotState · $voice · $input · 마지막 명령 $lastCommand$locations" +
             if (notice.isEmpty()) "" else "\n$notice"
         if (setup.visibility == View.VISIBLE) renderSetup()
     }
@@ -192,7 +195,8 @@ class MainActivity : Activity(), ServerLink.Listener, RobotGateway.Events {
 
     private fun renderSetup() {
         setupInfo.text = "저장된 위치: ${robot.locations().joinToString().ifEmpty { "없음" }}\n" +
-            "음성: ${if (robot.voiceMode == VoiceMode.TEMI_TTS) "Temi 음성(기본)" else "서버 음성 파일(없는 문장은 Temi 음성)"}"
+            "음성: ${if (robot.voiceMode == VoiceMode.TEMI_TTS) "Temi 음성(기본)" else "서버 음성 파일(없는 문장은 Temi 음성)"}\n" +
+            "듣기: ${if (robot.speechInput == SpeechInput.PI_MIC) "Pi 마이크(기본, Temi는 말만 함)" else "Temi 내장 인식"}"
     }
 
     private fun buildSetup(): LinearLayout = LinearLayout(this).apply {
@@ -216,6 +220,9 @@ class MainActivity : Activity(), ServerLink.Listener, RobotGateway.Events {
         val more = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         more.addView(button("음성 방식 바꾸기") {
             setVoiceMode(if (robot.voiceMode == VoiceMode.TEMI_TTS) VoiceMode.SERVER_AUDIO else VoiceMode.TEMI_TTS)
+        })
+        more.addView(button("듣기 방식 바꾸기") {
+            setSpeechInput(if (robot.speechInput == SpeechInput.PI_MIC) SpeechInput.TEMI else SpeechInput.PI_MIC)
         })
         more.addView(button("키오스크 앱으로 지정") { robot.requestKiosk() })
         more.addView(button("닫기") { visibility = View.GONE })
@@ -277,14 +284,29 @@ class MainActivity : Activity(), ServerLink.Listener, RobotGateway.Events {
         renderStatus()
     }
 
+    private fun savedSpeechInput(): SpeechInput {
+        val saved = getPreferences(MODE_PRIVATE).getString(PREF_INPUT, null)
+        return SpeechInput.values().firstOrNull { it.name == saved } ?: SpeechInput.PI_MIC
+    }
+
+    private fun setSpeechInput(input: SpeechInput) {
+        robot.speechInput = input
+        getPreferences(MODE_PRIVATE).edit().putString(PREF_INPUT, input.name).apply()
+        renderStatus()
+    }
+
     /**
-     * adb로 바꿀 수 있게 한다: am start -n kr.hylink.temirobot/.MainActivity --es voice server|temi
+     * adb로 바꿀 수 있게 한다: am start -n kr.hylink.temirobot/.MainActivity --es voice server|temi --es input pi|temi
      * --es demo stroop: 서버 없이 스트룹 화면을 띄운다. 결과는 서버로 보내지 않고 로그에만 남긴다.
      */
     private fun applyVoiceExtra(intent: Intent?) {
         when (intent?.getStringExtra("voice")) {
             "server" -> setVoiceMode(VoiceMode.SERVER_AUDIO)
             "temi" -> setVoiceMode(VoiceMode.TEMI_TTS)
+        }
+        when (intent?.getStringExtra("input")) {
+            "pi" -> setSpeechInput(SpeechInput.PI_MIC)
+            "temi" -> setSpeechInput(SpeechInput.TEMI)
         }
         if (intent?.getStringExtra("demo") == "stroop") {
             demo = true
@@ -317,6 +339,7 @@ class MainActivity : Activity(), ServerLink.Listener, RobotGateway.Events {
     companion object {
         private const val TAG = "TemiRobot"
         private const val PREF_VOICE = "voice_mode"
+        private const val PREF_INPUT = "speech_input"
         val REQUIRED_LOCATIONS = listOf("보행_측정", "보행_시작", "보행_끝")
         val CONDITIONS = mapOf(
             "single" to "평소처럼 걸어 주세요",

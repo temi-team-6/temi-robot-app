@@ -15,12 +15,12 @@ Temi 로봇에서 도는 앱. 서버(`temi-app-server`)의 `/ws/device`에 Temi 
 | 서버 → Temi | 앱 동작 | Temi → 서버 |
 |---|---|---|
 | `temi.say` | 받은 순서대로 하나씩 말한다. 앞 문장을 끊지 않는다 | 다 말하면 `temi.say_done`(`reply_to`) |
-| `temi.ask` | Temi가 질문하고 대답을 듣는다(`askQuestion`) | `speech.heard`(`reply_to`) |
+| `temi.ask` | 기본(듣기: Pi 마이크)은 질문을 말하기만 한다. 대답은 Pi가 `speech.heard`로 보낸다. 듣기를 'Temi'로 바꾸면 `askQuestion`으로 Temi가 듣는다 | (듣기 'Temi'일 때) `speech.heard`(`reply_to`) |
 | `temi.show` | `idle`, `walk`, `game` 화면. `game`이 `stroop`이면 앱이 게임을 진행한다 | 스트룹이 끝나면 `game.completed` |
 | `temi.goto` | 저장된 위치로 이동. 도착하면 이동 전 고개 각도로 되돌린다 | `temi.arrived` / `temi.goto_failed` |
 | `temi.video_call` | 서버가 준 요양사 이름과 **같은 이름의 Temi 연락처**로 Temi 내장 통화를 건다. 40초 안에 연결이 안 되면 안 받은 것으로 본다 | `video_call.result` |
 
-- "헤이 테미"로 들은 말도 `speech.heard`로 보낸다(`OVERRIDE_NLU`라서 Temi가 스스로 대답하지 않는다).
+- 듣기가 'Temi'일 때만 "헤이 테미"로 들은 말도 `speech.heard`로 보낸다(`OVERRIDE_NLU`라서 Temi가 스스로 대답하지 않는다). 기본인 'Pi 마이크'에서는 보내지 않는다(Pi와 같은 말이 두 번 가지 않게).
 - 연결이 끊기면 1~5초 간격으로 다시 붙고, 25초마다 `ping`을 보낸다. 끊긴 사이의 명령은 서버가 다시 보내지 않으므로, 앱도 남은 말을 버리고 대기 화면으로 돌아간다.
 
 ### 스트룹
@@ -35,7 +35,12 @@ Temi 로봇에서 도는 앱. 서버(`temi-app-server`)의 `/ws/device`에 Temi 
 - **Temi 음성(기본):** Temi 내장 TTS(`KO_KR`).
 - **서버 음성:** 서버의 `/twin/voice/manifest.json`에 있는 문장은 미리 만든 음성 파일을 재생하고, 없는 문장은 Temi 음성으로 말한다. 서버 쪽 음성 파일은 `temi-app-server/scripts/gen_temi_voice.py`로 만든다.
 - 바꾸는 방법: 설정 화면의 "음성 방식 바꾸기", 또는 `adb shell am start -n kr.hylink.temirobot/.MainActivity --es voice server` (`temi`로 되돌림).
-- 음성 인식은 아직 Temi 내장 인식만 쓴다. 외부 마이크 + 서버 STT는 서버에 업로드 API가 생기면 붙인다.
+
+### 듣기(음성 인식)
+
+- **Pi 마이크(기본):** 참가자 발화는 Pi가 받아 적어 `speech.heard`로 보낸다. Temi는 말만 한다. Pi 마이크에 들어간 Temi 목소리는 서버가 걸러낸다. STT 서비스는 아직 정하지 않았다.
+- **Temi 내장(예비):** `askQuestion`과 "헤이 테미"로 Temi가 듣는다. 듣기는 질문할 때와 웨이크업 뒤에만 된다.
+- 바꾸는 방법: 설정 화면의 "듣기 방식 바꾸기", 또는 `--es input pi|temi`.
 
 ## 설정 화면
 
@@ -44,7 +49,7 @@ Temi 로봇에서 도는 앱. 서버(`temi-app-server`)의 `/ws/device`에 Temi 
 - **측정 위치 저장:** Temi를 그 자리에 세운 뒤 `보행_측정`, `보행_시작`, `보행_끝`을 누른다. 세 위치 중 저장 안 된 것은 상태 줄에 계속 표시된다.
   - `보행_측정`: Pi 카메라(Temi 위)가 4m 구간 전체를 옆에서 보는 자리. 측정 중에는 여기 멈춰 있어야 한다.
   - 시작선·끝선 자체는 바닥 표시이고, Pi가 카메라 화면에서 그 위치를 잡는다.
-- **음성 방식 바꾸기**
+- **음성 방식 바꾸기**, **듣기 방식 바꾸기**
 - **키오스크 앱으로 지정:** Temi가 켜지면 이 앱이 뜨고 런처로 빠지지 않게 한다. Temi 화면에 확인 창이 뜬다.
 
 ## 빌드와 설치

@@ -19,6 +19,8 @@ import java.util.UUID
 
 enum class VoiceMode { TEMI_TTS, SERVER_AUDIO }
 
+enum class SpeechInput { PI_MIC, TEMI }
+
 /** 서버 명령을 Temi SDK 호출로 바꾸고, SDK 결과를 서버 메시지로 돌려준다. 판단 로직은 두지 않는다. */
 class RobotGateway(
     private val send: (type: String, payload: JSONObject, replyTo: String?) -> Unit,
@@ -54,6 +56,7 @@ class RobotGateway(
     var ready = false
         private set
     var voiceMode = VoiceMode.TEMI_TTS
+    var speechInput = SpeechInput.PI_MIC
     var voices: Map<String, String> = emptyMap()
     var voiceBaseUrl = ""
 
@@ -119,32 +122,29 @@ class RobotGateway(
         val line = lines.poll() ?: return
         speaking = line
         events.onSaying(line.text)
-        when (line) {
-            is Line.Ask -> {
-                pendingAsk = line.id
-                robot.askQuestion(line.text)
-                finishLine()
-            }
-            is Line.Say -> {
-                val file = voices[line.text]
-                if (voiceMode == VoiceMode.SERVER_AUDIO && file != null) playServerAudio(line, "$voiceBaseUrl/$file")
-                else speakWithTemi(line)
-            }
+        if (line is Line.Ask && speechInput == SpeechInput.TEMI) {
+            pendingAsk = line.id
+            robot.askQuestion(line.text)
+            finishLine()
+            return
         }
+        val file = voices[line.text]
+        if (voiceMode == VoiceMode.SERVER_AUDIO && file != null) playServerAudio(line, "$voiceBaseUrl/$file")
+        else speakWithTemi(line)
     }
 
-    private fun speakWithTemi(line: Line.Say) {
+    private fun speakWithTemi(line: Line) {
         val request = TtsRequest.create(line.text, false, TtsRequest.Language.KO_KR)
         speakingTts = request.id
         robot.speak(request)
     }
 
-    private fun playServerAudio(line: Line.Say, url: String) {
+    private fun playServerAudio(line: Line, url: String) {
         val mp = MediaPlayer()
         player = mp
         mp.setAudioStreamType(AudioManager.STREAM_MUSIC)
         mp.setOnPreparedListener { it.start() }
-        mp.setOnCompletionListener { sayDone(line) }
+        mp.setOnCompletionListener { spoken(line) }
         mp.setOnErrorListener { _, what, _ ->
             Log.w(TAG, "server audio failed ($what), falling back to Temi TTS")
             mp.release()
@@ -157,7 +157,7 @@ class RobotGateway(
     }
 
     override fun onTtsStatusChanged(ttsRequest: TtsRequest) {
-        val line = speaking as? Line.Say ?: return
+        val line = speaking ?: return
         if (ttsRequest.id != speakingTts) return
         when (ttsRequest.status) {
             TtsRequest.Status.COMPLETED, TtsRequest.Status.ERROR, TtsRequest.Status.NOT_ALLOWED,
@@ -165,17 +165,17 @@ class RobotGateway(
                 if (ttsRequest.status != TtsRequest.Status.COMPLETED) {
                     events.onNotice("Temi 말하기 ${ttsRequest.status}: ${line.text}")
                 }
-                sayDone(line)
+                spoken(line)
             }
             else -> Unit
         }
     }
 
-    private fun sayDone(line: Line.Say) {
+    private fun spoken(line: Line) {
         if (speaking !== line) return
         player?.release()
         player = null
-        send("temi.say_done", JSONObject(), line.id)
+        if (line is Line.Say) send("temi.say_done", JSONObject(), line.id)
         finishLine()
     }
 
@@ -189,6 +189,10 @@ class RobotGateway(
     override fun onAsrResult(asrResult: String) {
         val text = asrResult.trim()
         robot.finishConversation()
+        if (speechInput == SpeechInput.PI_MIC) {
+            Log.i(TAG, "Temi heard '$text' but speech input is the Pi mic; not sent")
+            return
+        }
         if (text.isEmpty()) return
         events.onHeard(text)
         send("speech.heard", JSONObject().put("text", text), pendingAsk)
