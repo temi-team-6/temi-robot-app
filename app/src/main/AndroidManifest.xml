@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:label="걷기 검사"
+        android:supportsRtl="false"
+        android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen">
+
+        <!-- Temi 런처의 앱 목록에 보이게 한다. -->
+        <meta-data
+            android:name="com.robotemi.sdk.metadata.SKILL"
+            android:value="걷기 검사" />
+        <!-- 키오스크 앱으로 지정할 수 있게 한다. 웨이크업 끄기 등은 키오스크에서만 된다. -->
+        <meta-data
+            android:name="com.robotemi.sdk.metadata.KIOSK"
+            android:value="true" />
+        <!-- "헤이 테미"로 들은 말에 Temi가 스스로 대답하지 않고, 인식한 글자를 이 앱이 받는다. -->
+        <meta-data
+            android:name="com.robotemi.sdk.metadata.OVERRIDE_NLU"
+            android:value="true" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
